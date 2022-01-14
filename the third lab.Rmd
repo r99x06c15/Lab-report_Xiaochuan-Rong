@@ -1,0 +1,338 @@
+---
+title: "Untitled"
+author: "Xiaochuan Rong"
+date: "30/12/2021"
+output: html_document
+---
+
+```{r}
+library(GGally) # for ggcorr
+library(corrr) # network_plot
+library(ggcorrplot) # for ggcorrplot
+library(FactoMineR) # multiple PCA functions
+library(factoextra) # visualisation functions for PCA (e.g. fviz_pca_var)
+library(paran) # for paran
+library(psych) # for the mixedCor, cortest.bartlett, KMO, fa functions
+library(car) # for vif
+library(GPArotation) # for the psych fa function to have the required rotation functionalities
+library(MVN) # for mvn function
+library(ICS) # for multivariate skew and kurtosis test
+library(tidyverse) # for tidy code
+library(dplyr)
+```
+
+```{r}
+fviz_loadnings_with_cor <- function(mod, axes = 1, loadings_above = 0.4) {
+require(factoextra)
+require(dplyr)
+require(ggplot2)
+if (!is.na(as.character(mod$call$call)[1])) {
+if (as.character(mod$call$call)[1] == "PCA") {
+contrib_and_cov = as.data.frame(rbind(mod[["var"]][["contrib"]],
+mod[["var"]][["cor"]]))
+vars = rownames(mod[["var"]][["contrib"]])
+attribute_type = rep(c("contribution", "correlation"),
+each = length(vars))
+contrib_and_cov = cbind(contrib_and_cov, attribute_type)
+contrib_and_cov
+plot_data = cbind(as.data.frame(cbind(contrib_and_cov[contrib_and_cov[,
+"attribute_type"] == "contribution", axes], contrib_and_cov[contrib_and_cov[,
+"attribute_type"] == "correlation", axes])),
+vars)
+names(plot_data) = c("contribution", "correlation",
+"vars")
+plot_data = plot_data %>%
+mutate(correlation = round(correlation, 2))
+plot = plot_data %>%
+ggplot() + aes(x = reorder(vars, contribution),
+y = contribution, gradient = correlation, label = correlation) +
+geom_col(aes(fill = correlation)) + geom_hline(yintercept = mean(plot_data$contribution),
+col = "red", lty = "dashed") + scale_fill_gradient2() +
+xlab("variable") + coord_flip() + geom_label(color = "black",
+fontface = "bold", position = position_dodge(0.5))
+}
+} else if (!is.na(as.character(mod$Call)[1])) {
+if (as.character(mod$Call)[1] == "fa") {
+loadings_table = mod$loadings %>%
+matrix(ncol = ncol(mod$loadings)) %>%
+as_tibble() %>%
+mutate(variable = mod$loadings %>%
+rownames()) %>%
+gather(factor, loading, -variable) %>%
+mutate(sign = if_else(loading >= 0, "positive",
+"negative"))
+if (!is.null(loadings_above)) {
+loadings_table[abs(loadings_table[, "loading"]) <
+loadings_above, "loading"] = NA
+loadings_table = loadings_table[!is.na(loadings_table[,
+"loading"]), ]
+}
+if (!is.null(axes)) {
+loadings_table = loadings_table %>%
+filter(factor == paste0("V", axes))
+}
+plot = loadings_table %>%
+ggplot() + aes(y = loading %>%
+abs(), x = reorder(variable, abs(loading)), fill = loading,
+label = round(loading, 2)) + geom_col(position = "dodge") +
+scale_fill_gradient2() + coord_flip() + geom_label(color = "black",
+fill = "white", fontface = "bold", position = position_dodge(0.5)) +
+facet_wrap(~factor) + labs(y = "Loading strength",
+x = "Variable")
+}
+}
+return(plot)
+}
+```
+
+```{r}
+animalrights <- read_csv("D:/Lund/R/advanced lab/animalrights.csv")
+```
+
+```{r}
+#expore data
+str(animalrights)
+summary(animalrights)
+library(DataExplorer)
+DataExplorer::create_report(animalrights)
+
+animalrights$sex<-as.factor(animalrights$sex)
+animalrights$party<-as.factor(animalrights$party)
+animalrights$liberal<-as.numeric(animalrights$liberal)
+```
+
+```{r}
+#remove missing values
+rowSums(is.na(animalrights))
+animalrights<-animalrights[rowSums(is.na(animalrights))==0, ]
+sum(animalrights > 5&animalrights<1, na.rm=TRUE)
+view(animalrights)
+
+mod_allitems<-lm(liberal~ar1+ar2+ar3+ar4+ar5+ar6+ar7+ar8+ar9+ar10+ar11+ar12+ar13+ar14+
+                   ar15+ar16+ar17+ar18+ar19+ar20+ar21+ar22+ar23+ar24+
+                   ar25+ar26+ar27+ar28,data=animalrights)
+summary(mod_allitems)
+vif(mod_allitems)
+```
+
+```{r}
+ar_items_only=animalrights%>%dplyr::select(ar1:ar28)
+ar_cor<-cor(ar_items_only)
+KMO(ar_cor)
+
+result<-mvn(animalrights[,1:28], mvnTest = "hz")
+result$multivariateNormality
+
+mvnorm.kur.test(animalrights[,1:28])
+
+mvnorm.skew.test(animalrights[,1:28])
+```
+
+```{r}
+EFA_mod1<-fa(ar_cor, nfactors = 5, fm="pa")
+
+EFA_mod1_communality<-as.data.frame(sort(EFA_mod1$communality, decreasing = TRUE))
+EFA_mod1_communality
+
+mean(EFA_mod1$communality)
+```
+
+```{r}
+fa.parallel(ar_cor, n.obs = nrow(animalrights), fa="fa", fm="pa")
+paran(ar_cor, cfa=TRUE)
+nfactors(ar_cor, n.obs = nrow(animalrights))
+```
+
+```{r}
+EFA_mod_promax<-fa(ar_cor, nfactors = 2, fm="pa", rotate = "promax")
+EFA_mod_varimax<-fa(ar_cor, nfactors = 2, fm="pa", rotate = "varimax")
+```
+
+```{r}
+fa.diagram(EFA_mod1)
+fa.diagram(EFA_mod_promax)
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+fviz_loadnings_with_cor(EFA_mod_promax, axes=1, loadings_above=0.4)
+fviz_loadnings_with_cor(EFA_mod_promax, axes=2, loadings_above=0.4)
+```
+
+```{r}
+###turn 1
+ar_items_only1=animalrights%>%dplyr::select(ar1:ar28)
+ar_cor1<-cor(ar_items_only1)
+KMO(ar_cor1)
+
+
+EFA_mod2<-fa(ar_cor1, nfactors = 2, fm="pa")
+
+EFA_mod2_communality<-as.data.frame(sort(EFA_mod2$communality, decreasing = TRUE))
+EFA_mod2_communality
+mean(EFA_mod2$communality)
+
+EFA_mod_promax<-fa(ar_cor1, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+print(EFA_mod_promax)
+
+EFA_mod_varimax<-fa(ar_cor1, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 2
+ar_items_only2=animalrights%>%dplyr::select(ar1:ar13,ar15:ar28)
+ar_cor2<-cor(ar_items_only2)
+KMO(ar_cor2)
+
+EFA_mod3<-fa(ar_cor2, nfactors = 2, fm="pa")
+
+EFA_mod3_communality<-as.data.frame(sort(EFA_mod3$communality, decreasing = TRUE))
+EFA_mod3_communality
+mean(EFA_mod3$communality)
+
+EFA_mod_promax<-fa(ar_cor2, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor2, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 3
+ar_items_only3=animalrights%>%dplyr::select(ar1:ar7,ar9:ar13,ar15:ar28)
+ar_cor3<-cor(ar_items_only3)
+KMO(ar_cor3)
+
+EFA_mod4<-fa(ar_cor3, nfactors = 2, fm="pa")
+
+EFA_mod4_communality<-as.data.frame(sort(EFA_mod4$communality, decreasing = TRUE))
+EFA_mod4_communality
+mean(EFA_mod4$communality)
+
+EFA_mod_promax<-fa(ar_cor3, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor3, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 4
+ar_items_only4=animalrights%>%dplyr::select(ar1:ar7,ar9:ar13,ar15:ar24,ar26:ar28)
+ar_cor4<-cor(ar_items_only4)
+KMO(ar_cor4)
+
+EFA_mod5<-fa(ar_cor4, nfactors = 2, fm="pa")
+
+EFA_mod5_communality<-as.data.frame(sort(EFA_mod5$communality, decreasing = TRUE))
+EFA_mod5_communality
+mean(EFA_mod5$communality)
+
+EFA_mod_promax<-fa(ar_cor4, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor4, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 5
+ar_items_only5=animalrights%>%dplyr::select(ar1:ar7,ar9:ar10,ar12,ar13,ar15:ar24,ar26:ar28)
+ar_cor5<-cor(ar_items_only5)
+KMO(ar_cor5)
+
+EFA_mod6<-fa(ar_cor5, nfactors = 2, fm="pa")
+
+EFA_mod6_communality<-as.data.frame(sort(EFA_mod6$communality, decreasing = TRUE))
+EFA_mod6_communality
+mean(EFA_mod6$communality)
+
+EFA_mod_promax<-fa(ar_cor5, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor5, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 6
+ar_items_only6=animalrights%>%dplyr::select(ar2:ar7,ar9:ar10,ar12,ar13,ar15:ar24,ar26:ar28)
+ar_cor6<-cor(ar_items_only6)
+KMO(ar_cor6)
+
+EFA_mod7<-fa(ar_cor6, nfactors = 2, fm="pa")
+
+EFA_mod7_communality<-as.data.frame(sort(EFA_mod7$communality, decreasing = TRUE))
+EFA_mod7_communality
+mean(EFA_mod7$communality)
+
+EFA_mod_promax<-fa(ar_cor6, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor6, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 7---final model
+ar_items_only7=animalrights%>%dplyr::select(ar2:ar7,ar9:ar10,ar12,ar13,ar15,ar17:ar24,ar26:ar28)
+ar_cor7<-cor(ar_items_only7)
+KMO(ar_cor7)
+
+EFA_mod8<-fa(ar_cor7, nfactors = 2, fm="pa")
+
+EFA_mod8_communality<-as.data.frame(sort(EFA_mod8$communality, decreasing = TRUE))
+EFA_mod8_communality
+mean(EFA_mod8$communality)
+
+EFA_mod_promax<-fa(ar_cor7, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+print(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor7, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###turn 8
+ar_items_only8=animalrights%>%dplyr::select(ar2,ar4:ar7,ar9:ar10,ar12,ar13,ar15,ar17:ar24,ar26:ar28)
+ar_cor8<-cor(ar_items_only8)
+KMO(ar_cor8)
+
+EFA_mod9<-fa(ar_cor8, nfactors = 2, fm="pa")
+
+EFA_mod9_communality<-as.data.frame(sort(EFA_mod9$communality, decreasing = TRUE))
+EFA_mod9_communality
+mean(EFA_mod9$communality)
+
+EFA_mod_promax<-fa(ar_cor8, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(EFA_mod_promax)
+EFA_mod_varimax<-fa(ar_cor8, nfactors = 2, fm="pa", rotate = "varimax")
+fa.diagram(EFA_mod_varimax)
+```
+
+```{r}
+###final model and predict liberal
+ar_items_only7=animalrights%>%dplyr::select(ar2:ar7,ar9:ar10,ar12,ar13,ar15,ar17:ar24,ar26:ar28)
+ar_cor7<-cor(ar_items_only7)
+KMO(ar_cor7)
+
+EFA_mod8<-fa(ar_cor7, nfactors = 2, fm="pa")
+
+EFA_mod8_communality<-as.data.frame(sort(EFA_mod8$communality, decreasing = TRUE))
+EFA_mod8_communality
+mean(EFA_mod8$communality)
+
+final_model<-fa(ar_cor7, nfactors = 2, fm="pa", rotate = "promax")
+fa.diagram(final_model)
+print(final_model)
+
+testing<-animalrights[, c(2:7,9:10,12,13,15,17:24,26:28)]
+factorscores<- factor.scores(testing, final_model)$scores 
+ar_with_factorscores=cbind(animalrights,factorscores)
+
+view(ar_with_factorscores)
+str(ar_with_factorscores)
+
+names(ar_with_factorscores)[32]<-"AER"
+names(ar_with_factorscores)[33]<-"ACA"
+
+model_liberal<-lm(liberal~AER+ACA, data = ar_with_factorscores)
+summary(model_liberal)
+```

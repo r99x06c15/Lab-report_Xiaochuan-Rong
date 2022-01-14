@@ -1,0 +1,291 @@
+---
+title: "the first lab"
+author: "Xiaochuan Rong"
+date: "07/01/2022"
+output: html_document
+---
+
+```{r}
+library(pscl) # for pR2
+library(lmtest) # for lrtest
+library(dominanceanalysis) # for dominanceAnalysis()
+library(tidyverse) # for dplyr and ggplot2
+library(dplyr) # for na.if
+library(tidyr) # for replace_na
+library(car) # Prediction: Checking Multicollinearity
+```
+
+```{r}
+Titanic = read.csv("Titanic - training set.csv")
+View(Titanic)
+```
+
+```{r}
+library(DataExplorer)
+DataExplorer::create_report(Titanic)
+summary(Titanic)
+
+Titanic$Age[is.na(Titanic$Age)] <- mean(Titanic$Age, na.rm = TRUE)
+Titanic$Cabin[Titanic$Cabin == "" | Titanic$Cabin == " "] <- NA
+Titanic$Cabin[is.na(Titanic$Cabin)]<-"the third class"
+Titanic$Cabin[Titanic$Cabin!="the third class"]<-"higher class"
+view(Titanic)
+```
+
+```{r}
+Titanic%>%ggplot()+aes(x=Survived)+geom_bar()
+Titanic%>%ggplot()+aes(x=Pclass)+geom_bar()
+Titanic%>%ggplot()+aes(x=Sex)+geom_bar()
+Titanic%>%ggplot()+aes(x=SibSp)+geom_bar()
+Titanic%>%ggplot()+aes(x=Parch)+geom_bar()
+Titanic%>%ggplot()+aes(x=Cabin)+geom_bar()
+```
+
+```{r}
+Titanic=Titanic%>%mutate(Survived=factor(Survived),
+                         Pclass=factor(Pclass),
+                         Sex=factor(Sex))
+```
+
+```{r}
+Titanic%>%ggplot()+
+  aes(y=Cabin, x=Survived)+
+  geom_boxplot()+
+  geom_jitter(width=0.2)
+
+Titanic%>%ggplot()+
+  aes(y=Age, x=Survived)+
+  geom_violin(aes(fill=Survived))+
+  geom_boxplot()+
+  geom_jitter(width=0.2)
+
+Titanic%>%ggplot()+aes(x=Cabin, fill=Survived)+geom_bar()
+```
+
+```{r}
+mod1<-glm(Survived~Pclass + Age + SibSp + Parch +   
+Sex, family = binomial(), data=Titanic)
+summary(mod1)
+
+Titanic=Titanic%>%
+  mutate(pred_mod1=predict(mod1))%>%
+  mutate(pred_mod1=case_when(pred_mod1<=0~"0",
+                             pred_mod1>0~"1"))
+
+Titanic=Titanic%>%
+  mutate(correct_prediction_mod1=case_when(pred_mod1==Survived~"correct",
+                                      pred_mod1!=Survived~"incorrect"))
+
+Titanic%>%
+  group_by(correct_prediction_mod1)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+Titanic%>%
+  group_by(Survived)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#crosstable of null model and predicted values
+Titanic%>%
+  group_by(Survived, pred_mod1)%>%
+  summarize(n=n())%>%
+  spread(Survived, n)
+
+#correctly categorized as survived
+Titanic%>%
+  filter(Survived=="1")%>%
+  group_by(correct_prediction_mod1)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#correctly categorized as died
+Titanic%>%
+  filter(Survived=="0")%>%
+  group_by(correct_prediction_mod1)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+```
+
+
+```{r}
+#acknowledge the reference
+persona_choose<-function(x) {strsplit(x, split='[,.]')[[1]][2]}
+Titanic$persona <- sapply(Titanic$Name, persona_choose)
+Titanic$persona <- sub(' ', '', Titanic$persona) #removing spaces before title
+table(Titanic$Sex, Titanic$persona)
+
+Titanic$persona[Titanic$persona %in% c("Mlle", "Ms")] <- "Miss"
+Titanic$persona[Titanic$persona== "Mme"] <- "Mrs"
+Titanic$persona[!(Titanic$persona %in% c('Master', 'Miss', 'Mr', 'Mrs'))] <- "other"
+Titanic$persona <- as.factor(Titanic$persona)
+table(Titanic$Sex, Titanic$persona)
+
+ggplot(Titanic, aes(x=persona, fill=Survived))+
+  geom_bar(stat='count', position='stack')
+```
+
+```{r}
+Titanic$persona = factor(Titanic$persona)
+str(Titanic)
+```
+
+```{r}
+classification_mod1<-glm(Survived~Pclass + Sex + Age + SibSp + Parch +   
+persona, family = binomial(), data=Titanic)
+summary(classification_mod1)
+
+#Multicollinearity increases the standard errors of the coefficients. 
+vif(classification_mod1)
+
+classification_mod2<-glm(Survived~Pclass + Age + SibSp + Parch +   
+persona, family = binomial(), data=Titanic)
+summary(classification_mod2)
+
+vif(classification_mod2)
+```
+
+```{r}
+Titanic=Titanic%>%
+  mutate(pred_mod2=predict(classification_mod2))%>%
+  mutate(pred_mod2=case_when(pred_mod2<=0~"0",
+                             pred_mod2>0~"1"))
+
+Titanic=Titanic%>%
+  mutate(correct_prediction_2=case_when(pred_mod2==Survived~"correct",
+                                      pred_mod2!=Survived~"incorrect"))
+
+Titanic%>%
+  group_by(correct_prediction_2)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#percentage of null model of Survived
+Titanic%>%
+  group_by(Survived)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#crosstable of null model and predicted values
+Titanic%>%
+  group_by(Survived, pred_mod2)%>%
+  summarize(n=n())%>%
+  spread(Survived, n)
+
+#correctly categorized as survived
+Titanic%>%
+  filter(Survived=="1")%>%
+  group_by(correct_prediction_2)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#correctly categorized as died
+Titanic%>%
+  filter(Survived=="0")%>%
+  group_by(correct_prediction_2)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+```
+
+```{r}
+#fine-tuning the sensitivity of the model
+
+Titanic=Titanic%>%
+  mutate(pred_mod2_tuned=predict(classification_mod2))%>%
+  mutate(pred_mod2_tuned=case_when(pred_mod2_tuned<=-0.5~"0",
+                             pred_mod2_tuned>-0.5~"1"))
+
+Titanic=Titanic%>%
+  mutate(correct_prediction_tuned=case_when(pred_mod2_tuned==Survived~"correct",
+                                      pred_mod2_tuned!=Survived~"incorrect"))
+
+Titanic%>%
+  group_by(correct_prediction_tuned)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#predict 82% correctly
+
+#crosstable of null model and predicted values
+Titanic%>%
+  group_by(Survived, pred_mod2_tuned)%>%
+  summarize(n=n())%>%
+  spread(Survived, n)
+
+#correctly categorized as survived
+Titanic%>%
+  filter(Survived=="1")%>%
+  group_by(correct_prediction_tuned)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+
+#correctly categorized as died
+Titanic%>%
+  filter(Survived=="0")%>%
+  group_by(correct_prediction_tuned)%>%
+  summarise(count=n())%>%
+  mutate(freq=count/sum(count))
+```
+
+```{r}
+mod_null=glm(Survived~1, family = binomial, data=Titanic)
+summary(mod_null)
+```
+
+```{r}
+pR2(classification_mod2)
+pR2(classification_mod2)["llh"]*-2
+pR2(mod_null)
+pR2(mod_null)["llh"]*-2
+```
+
+```{r}
+lrtest(mod_null, classification_mod2)
+AIC(mod_null, classification_mod2)
+```
+
+```{r}
+summary(classification_mod2)
+confint(classification_mod2)
+## odds ratios and 95% CI
+exp(cbind(OR = coef(classification_mod2), confint(classification_mod2)))
+```
+
+```{r}
+dominance_mod2<-dominanceAnalysis(classification_mod2)
+contributionByLevel(dominance_mod2, fit.functions = "r2.m")
+plot(dominance_mod2, which.graph="conditional", fit.functions = "r2.m")
+```
+```{r}
+dominance_mod2<-dominanceAnalysis(classification_mod2)
+averageContribution(dominance_mod2,fit.functions = "r2.m")
+plot(dominance_mod2,which.graph="general",fit.functions = "r2.m")+coord_flip()
+```
+
+```{r}
+final_model<-glm(Survived~Pclass + Age + persona +  SibSp + Parch, family = binomial(), data=Titanic)
+
+newdata1=data.frame(Pclass="3", Age=4, persona="Miss", SibSp=0, Parch=1)
+Sue_without_L<-predict(final_model, newdata1)
+Sue_without_L
+exp(Sue_without_L)
+exp(Sue_without_L)/(1+exp(Sue_without_L))
+
+newdata2=data.frame(Pclass="3", Age=4, persona="Miss", SibSp=0, Parch=2)
+Sue_with_L<-predict(final_model, newdata2)
+Sue_with_L
+exp(Sue_with_L)
+exp(Sue_with_L)/(1+exp(Sue_with_L))
+
+newdata3=data.frame(Pclass="3", Age=20, persona="Mrs", SibSp=0, Parch=0)
+Kate_without_L<-predict(final_model, newdata3)
+Kate_without_L
+exp(Kate_without_L)
+exp(Kate_without_L)/(1+exp(Kate_without_L))
+
+newdata4=data.frame(Pclass="3", Age=20, persona="Mrs", SibSp=1, Parch=0)
+Kate_with_L<-predict(final_model, newdata4)
+Kate_with_L
+exp(Kate_with_L)
+exp(Kate_with_L)/(1+exp(Kate_with_L))
+```

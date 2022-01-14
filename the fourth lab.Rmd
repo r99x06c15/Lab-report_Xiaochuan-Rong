@@ -1,0 +1,93 @@
+---
+title: "the fourth lab"
+author: "Xiaochuan Rong"
+date: "12/01/2022"
+output: html_document
+---
+
+```{r}
+library(lavaan) # for SEM fit and model functions
+library(semPlot) # for semPaths()
+library(semptools) # for set_sem_layout
+library(tidyverse) # for tidy code
+library(CompQuadForm) # for mvnorm.kur.test and mvnorm.skew.test (prerequisite)
+library(ICS) # for mvnorm.kur.test and mvnorm.skew.test
+```
+
+```{r}
+library(psychTools) 
+my_data=holzinger.swineford
+view(my_data)
+```
+
+#task1
+```{r}
+modelA<-"vpa =~ t01_visperc + t02_cubes + t03_frmbord +t04_lozenges
+        va =~ t06_paracomp + t07_sentcomp + t09_wordmean
+        ps =~ t10_addition + t12_countdot + t13_sccaps
+        vpa ~~ va
+        vpa ~~ ps
+        va ~~ ps
+"
+fit1<-sem(modelA, data = my_data)
+
+semPaths(fit1)
+```
+
+```{r}
+#test multivariate normality
+mvnorm.kur.test(my_data[,8:20])
+mvnorm.skew.test(my_data[,8:20])
+
+#choose MLM estimator to address the non-normality
+fit1_MLM<-sem(modelA, data = my_data, estimator="MLM")
+summary(fit1_MLM, fit.measure=T)
+
+fit1_boot<-sem(modelA, data = my_data, se="bootstrap", test="bootstrap")
+summary(fit1_boot, fit.measure=T)
+```
+
+#task2
+```{r}
+modelB<-"vpa =~ t01_visperc + t02_cubes + t03_frmbord +t04_lozenges
+        va =~ t06_paracomp + t07_sentcomp + t09_wordmean
+        ps =~ t10_addition + t12_countdot + t13_sccaps
+        vpa ~~ va
+        vpa ~~ ps
+        va ~~ ps
+        t10_addition ~~ t12_countdot
+"
+fit2<-sem(modelB, data = my_data)
+
+semPaths(fit2)
+```
+
+```{r}
+#choose MLM estimator to address the non-normality
+fit2_MLM<-sem(modelB, data = my_data, estimator="MLM")
+summary(fit2_MLM, fit.measure=T)
+
+fit2_boot<-sem(modelA, data = my_data, se="bootstrap", test="bootstrap")
+summary(fit2_boot, fit.measure=T)
+
+anova(fit1_MLM, fit2_MLM)
+```
+
+```{r}
+summary(fit2_MLM, standardized=T, rsquare=T)
+
+semPaths(fit2_MLM, whatLabels = "std")
+```
+
+#task3
+```{r}
+mediation_model<-"t13_sccaps ~ a*t01_visperc + b*t12_countdot
+                  t12_countdot ~ c*t01_visperc
+indirect := b*c
+total := a+(b*c)
+"
+
+fit_mediation_model<-sem(mediation_model, data = my_data)
+summary(fit_mediation_model)
+```
+
